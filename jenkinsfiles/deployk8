@@ -1,0 +1,40 @@
+properties([
+    parameters([
+        string(defaultValue: 'dev-uat', name: 'BRANCH'),
+        string(defaultValue: 'master', name: 'comp'),
+        string(defaultValue: 'master', name: 'mvn'),
+        string(defaultValue: 'service', name: 'action')
+    ])
+])
+
+node {
+    cleanWs()
+
+    echo "The workspace directory is ${env.WORKSPACE}"
+
+    stage('Git Checkout') {
+        git branch: "${params.BRANCH}", credentialsId: 'myjenkins', url: 'git@github.com:pjitss/docker-Java-kubernetes-project.git'
+    }
+
+    
+
+    stage('SonarQube Analysis') {
+        withCredentials([string(credentialsId: 'mysonar2', variable: 'SONAR_TOKEN')]) {
+            withSonarQubeEnv('mysonar') {
+            sh """
+               mvn clean verify sonar:sonar \
+               -Dsonar.projectKey=mysonar2 \
+               -Dsonar.host.url=http://192.168.0.190:9000 \
+               -Dsonar.login=$SONAR_TOKEN
+            """
+            }
+        }
+    }
+
+    stage('Execute Ansible Playbooks on Kubernetes Master') {
+        ansiblePlaybook(
+            playbook: "playbooks/k8deploy-main.yml",
+            extras: "-i inventory/k8-inventory -e target_host=${comp} -e mvn=${mvn}"
+        )
+    }
+}
